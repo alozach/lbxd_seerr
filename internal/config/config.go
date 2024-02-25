@@ -21,6 +21,9 @@ type Configuration struct {
 	TMDb struct {
 		ApiKey string `mapstructure:"api_key" validate:"required"`
 	}
+	Tasks struct {
+		DLWatchlist string `mapstructure:"dl_watchlist"`
+	}
 }
 
 var config Configuration
@@ -39,7 +42,7 @@ func init() {
 	}
 
 	viper.SetDefault("jellyseerr.requests_limit", -1)
-	viper.SetDefault("dry_run", true)
+	viper.SetDefault("tasks.dl_watchlist", "disabled")
 
 	err := viper.Unmarshal(&config)
 	if err != nil {

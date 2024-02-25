@@ -3,13 +3,10 @@ FROM selenium/standalone-chrome
 MAINTAINER aloz96
 
 WORKDIR /app
-COPY . .
 
-RUN mkdir -p logs
+COPY bin bin/
+COPY resources resources/
 
-RUN sudo apt-get update
-RUN sudo apt-get -y install cron
+RUN sudo chown -R seluser:seluser /app
 
-RUN crontab -l | { cat; echo "12 1 * * * /app/bin/watchlist_sync"; } | crontab -
-
-ENTRYPOINT ["cron"]
+ENTRYPOINT ["/app/bin/watchlist_sync"]

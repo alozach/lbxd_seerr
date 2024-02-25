@@ -2,8 +2,11 @@ package lxbd
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/ryanbradynd05/go-tmdb"
 )
@@ -16,24 +19,16 @@ type Film struct {
 	TmdbInfo     *tmdb.Movie `json:"tmdb_info"`
 }
 
-/* func GetAllFilmsNotIn(srcList []Film, filter []Film) []Film {
-	diffMap := make(map[int]bool)
-	for _, film := range filter {
-		diffMap[film.Lid] = true
-	}
-
-	var diff []Film
-	for _, film := range srcList {
-		if !diffMap[film.Lid] {
-			diff = append(diff, film)
-		}
-	}
-	return diff
-} */
-
 func SaveFilms(films []Film, filename string) error {
 	jsonData, err := json.Marshal(films)
 	if err != nil {
+		return err
+	}
+
+	split := strings.Split(filename, "/")
+	dirName := fmt.Sprint("/", filepath.Join(split[:len(split)-1]...))
+	if err := os.MkdirAll(dirName, os.ModePerm); err != nil {
+		log.Println("Failed to save request data: ", err)
 		return err
 	}
 

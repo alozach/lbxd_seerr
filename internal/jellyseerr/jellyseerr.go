@@ -19,14 +19,25 @@ type Jellyseerr struct {
 	requestedTMDbIds []int
 }
 
+type RequestStatus string
+
+const (
+	REQ_OK               RequestStatus = "REQ_OK"
+	REQ_MISSING_DATA     RequestStatus = "MISSING_DATA"
+	REQ_JELLYSEERR_ERROR RequestStatus = "JELLYSEERR_ERROR"
+	REQ_ALREADY_OK       RequestStatus = "ALREADY_REQUESTED"
+	REQ_FILTER_KO        RequestStatus = "FILTER_KO"
+)
+
+type Request struct {
+	Status  RequestStatus
+	Details string
+}
+
 var js Jellyseerr
 
-func Init(apiKey string, baseUrl string) error {
+func Init(apiKey string, baseUrl string) {
 	js = Jellyseerr{apiKey: apiKey, url: baseUrl + "/api/v1"}
-	if err := RefreshRequestedTMDbIds(); err != nil {
-		return err
-	}
-	return nil
 }
 
 func AddFilter(filterName string) {
@@ -100,28 +111,31 @@ func RefreshRequestedTMDbIds() error {
 	return nil
 }
 
-func CreateRequest(film lxbd.Film) bool {
+func CreateRequest(film lxbd.Film, refreshAlreadyRequested bool) Request {
+	if js.requestedTMDbIds == nil || refreshAlreadyRequested {
+		if err := RefreshRequestedTMDbIds(); err != nil {
+			return Request{Status: REQ_JELLYSEERR_ERROR, Details: err.Error()}
+		}
+	}
+
 	if film.TmdbInfo == nil {
-		log.Println("Missing TMDb info for film with lid ", film.Lid)
-		return false
+		return Request{Status: REQ_MISSING_DATA}
 	}
 
 	for _, tmdbId := range js.requestedTMDbIds {
 		if tmdbId == film.TmdbInfo.ID {
-			log.Printf("Already requested \"%s\" (%d)", film.TmdbInfo.Title, film.TmdbId)
-			return false
+			return Request{Status: REQ_ALREADY_OK}
 		}
 	}
 
 	for _, filter := range js.ReqFilters {
 		filter_passed, details := filter.FilterFunc(film)
 		if !filter_passed {
-			errLog := fmt.Sprint(filter.Name, " filter did not pass for film ", film.TmdbInfo.Title, " (", film.TmdbId, ")")
+			retDetails := filter.Name
 			if details != "" {
-				errLog += ": " + details
+				retDetails += ": " + details
 			}
-			log.Println(errLog)
-			return false
+			return Request{Status: REQ_FILTER_KO, Details: retDetails}
 		}
 	}
 
@@ -129,16 +143,14 @@ func CreateRequest(film lxbd.Film) bool {
 
 	res, err := APICall("/request", http.MethodPost, bytes.NewBuffer(body))
 	if err != nil {
-		return false
+		return Request{Status: REQ_JELLYSEERR_ERROR, Details: err.Error()}
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusCreated {
-		log.Printf("Error creating request for  \"%s\" (TMDb id %d): got HTTP code %d", film.TmdbInfo.Title, film.TmdbId, res.StatusCode)
-		return false
+		return Request{Status: REQ_JELLYSEERR_ERROR, Details: fmt.Sprint("Got HTTP code", res.StatusCode)}
 	}
 
-	log.Printf("Successfully created request for \"%s\" (TMDb id %d)", film.TmdbInfo.Title, film.TmdbId)
 	js.requestedTMDbIds = append(js.requestedTMDbIds, film.TmdbId)
-	return true
+	return Request{Status: REQ_OK}
 }

@@ -37,7 +37,7 @@ func (scrapping *Scrapping) initColly() {
 func (scrapping *Scrapping) initSelenium() {
 	var err error
 
-	scrapping.service, err = selenium.NewChromeDriverService("./resources/chromedriver", 4444)
+	scrapping.service, err = selenium.NewChromeDriverService("/app/resources/chromedriver", 4444)
 	if err != nil {
 		log.Fatal("Error: ", err)
 	}
@@ -200,12 +200,21 @@ func (s *Scrapping) fetchTMDbInfo(film *lxbd.Film) error {
 	if err != nil {
 		return err
 	}
-	film.TmdbInfo, err = s.tmdbAPI.GetMovieInfo(film.TmdbId, nil)
+	film.TmdbInfo, err = s.tmdbAPI.GetMovieInfo(film.TmdbId, map[string]string{"language": "fr-FR", "append_to_response": "releases"})
 	if err != nil {
 		log.Printf("Failed to get TMDb info for lid %d: %s", film.Lid, err)
 		film.TmdbInfo = nil
 		return errors.New("failed to get TMDb info")
 	}
+
+	// fetch FR release date 
+	for _, rel := range film.TmdbInfo.Releases.Countries {
+		if rel.Iso3166_1 == "FR" {
+			film.TmdbInfo.ReleaseDate = rel.ReleaseDate
+			break
+		}
+	}
+	film.TmdbInfo.Releases = nil
 	return nil
 }
 

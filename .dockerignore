@@ -3,4 +3,5 @@ cmd
 configs
 data
 internal
+logs
 go.*

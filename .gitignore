@@ -19,6 +19,7 @@ configs/
 data/
 logs/
 vendor/
+test/
 
 # Go workspace file
 go.work
