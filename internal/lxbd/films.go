@@ -19,20 +19,22 @@ type Film struct {
 	TmdbInfo     *tmdb.Movie `json:"tmdb_info"`
 }
 
-func SaveFilms(films []Film, filename string) error {
+const filmsFilename = "/app/data/films.txt"
+
+func SaveFilms(films []Film) error {
 	jsonData, err := json.Marshal(films)
 	if err != nil {
 		return err
 	}
 
-	split := strings.Split(filename, "/")
+	split := strings.Split(filmsFilename, "/")
 	dirName := fmt.Sprint("/", filepath.Join(split[:len(split)-1]...))
 	if err := os.MkdirAll(dirName, os.ModePerm); err != nil {
 		log.Println("Failed to save request data: ", err)
 		return err
 	}
 
-	file, err := os.Create(filename)
+	file, err := os.Create(filmsFilename)
 	if err != nil {
 		log.Println("Failed to save request data: ", err)
 		return err
@@ -49,14 +51,13 @@ func SaveFilms(films []Film, filename string) error {
 	return nil
 }
 
-func GetSavedFilms(filename string) ([]Film, error) {
-	file, err := os.Open(filename)
+func GetSavedFilms() ([]Film, error) {
+	file, err := os.Open(filmsFilename)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	// Decode the JSON data
 	var films []Film
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&films); err != nil {

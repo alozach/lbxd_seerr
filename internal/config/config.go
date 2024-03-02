@@ -8,22 +8,30 @@ import (
 )
 
 type Configuration struct {
-	Lxbd struct {
-		Username string `validate:"required"`
-		Password string `validate:"required"`
-	}
-	Jellyseerr struct {
-		ApiKey        string   `mapstructure:"api_key" validate:"required"`
-		BaseUrl       string   `mapstructure:"base_url" validate:"required"`
-		RequestsLimit int      `mapstructure:"requests_limit"`
-		Filters       []string `mapstructure:"filters"`
-	}
-	TMDb struct {
-		ApiKey string `mapstructure:"api_key" validate:"required"`
-	}
-	Tasks struct {
-		DLWatchlist string `mapstructure:"dl_watchlist"`
-	}
+	Lxbd       LxbdConfig
+	Jellyseerr JellyseerrConfig
+	TMDb       TMDbConfig
+	Tasks      TasksConfig
+}
+
+type LxbdConfig struct {
+	Username string `validate:"required"`
+	Password string `validate:"required"`
+}
+
+type JellyseerrConfig struct {
+	ApiKey        string   `mapstructure:"api_key" validate:"required"`
+	BaseUrl       string   `mapstructure:"base_url" validate:"required"`
+	RequestsLimit int      `mapstructure:"requests_limit"`
+	Filters       []string `mapstructure:"filters"`
+}
+
+type TMDbConfig struct {
+	ApiKey string `mapstructure:"api_key" validate:"required"`
+}
+
+type TasksConfig struct {
+	DLWatchlist string `mapstructure:"dl_watchlist"`
 }
 
 var config Configuration

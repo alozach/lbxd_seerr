@@ -2,6 +2,7 @@
 FROM selenium/standalone-chrome
 MAINTAINER aloz96
 
+USER 0
 WORKDIR /app
 
 COPY bin bin/

@@ -2,13 +2,17 @@ package jellyseerr
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 
+	c "github.com/alozach/lbxd_seerr/internal/config"
 	"github.com/alozach/lbxd_seerr/internal/lxbd"
 )
 
@@ -17,12 +21,15 @@ type Jellyseerr struct {
 	apiKey           string
 	url              string
 	requestedTMDbIds []int
+	requestsLimit    int
+	currNbRequests   int
 }
 
 type RequestStatus string
 
 const (
 	REQ_OK               RequestStatus = "REQ_OK"
+	REQ_REACHED_LIMIT    RequestStatus = "REQ_REACHED_LIMIT"
 	REQ_MISSING_DATA     RequestStatus = "MISSING_DATA"
 	REQ_JELLYSEERR_ERROR RequestStatus = "JELLYSEERR_ERROR"
 	REQ_ALREADY_OK       RequestStatus = "ALREADY_REQUESTED"
@@ -30,14 +37,17 @@ const (
 )
 
 type Request struct {
+	Film    lxbd.Film
 	Status  RequestStatus
 	Details string
 }
 
+const requestsFilename = "/app/data/last_requests.txt"
+
 var js Jellyseerr
 
-func Init(apiKey string, baseUrl string) {
-	js = Jellyseerr{apiKey: apiKey, url: baseUrl + "/api/v1"}
+func Init(config c.JellyseerrConfig) {
+	js = Jellyseerr{apiKey: config.ApiKey, url: config.BaseUrl + "/api/v1", requestsLimit: config.RequestsLimit}
 }
 
 func AddFilter(filterName string) {
@@ -111,20 +121,30 @@ func RefreshRequestedTMDbIds() error {
 	return nil
 }
 
+func ResetRequestsCounter() {
+	js.currNbRequests = 0
+}
+
 func CreateRequest(film lxbd.Film, refreshAlreadyRequested bool) Request {
-	if js.requestedTMDbIds == nil || refreshAlreadyRequested {
-		if err := RefreshRequestedTMDbIds(); err != nil {
-			return Request{Status: REQ_JELLYSEERR_ERROR, Details: err.Error()}
-		}
-	}
+	req := Request{Film: film}
 
 	if film.TmdbInfo == nil {
-		return Request{Status: REQ_MISSING_DATA}
+		req.Status = REQ_MISSING_DATA
+		return req
+	}
+
+	if js.requestedTMDbIds == nil || refreshAlreadyRequested {
+		if err := RefreshRequestedTMDbIds(); err != nil {
+			req.Status = REQ_JELLYSEERR_ERROR
+			req.Details = err.Error()
+			return req
+		}
 	}
 
 	for _, tmdbId := range js.requestedTMDbIds {
 		if tmdbId == film.TmdbInfo.ID {
-			return Request{Status: REQ_ALREADY_OK}
+			req.Status = REQ_ALREADY_OK
+			return req
 		}
 	}
 
@@ -135,22 +155,101 @@ func CreateRequest(film lxbd.Film, refreshAlreadyRequested bool) Request {
 			if details != "" {
 				retDetails += ": " + details
 			}
-			return Request{Status: REQ_FILTER_KO, Details: retDetails}
+			req.Status = REQ_FILTER_KO
+			req.Details = retDetails
+			return req
 		}
+	}
+
+	if js.requestsLimit > 0 && js.currNbRequests >= js.requestsLimit {
+		req.Status = REQ_REACHED_LIMIT
+		return req
 	}
 
 	body, _ := json.Marshal(map[string]interface{}{"mediaType": "movie", "mediaId": film.TmdbId, "userId": 2})
 
 	res, err := APICall("/request", http.MethodPost, bytes.NewBuffer(body))
 	if err != nil {
-		return Request{Status: REQ_JELLYSEERR_ERROR, Details: err.Error()}
+		req.Status = REQ_JELLYSEERR_ERROR
+		req.Details = err.Error()
+		return req
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusCreated {
-		return Request{Status: REQ_JELLYSEERR_ERROR, Details: fmt.Sprint("Got HTTP code", res.StatusCode)}
+		req.Status = REQ_JELLYSEERR_ERROR
+		req.Details = fmt.Sprint("Got HTTP code", res.StatusCode)
+		return req
 	}
 
 	js.requestedTMDbIds = append(js.requestedTMDbIds, film.TmdbId)
-	return Request{Status: REQ_OK}
+	req.Status = REQ_OK
+	js.currNbRequests++
+	return req
+}
+
+func SaveRequests(requests []Request) error {
+	requestsFile, err := os.Create(requestsFilename)
+	if err != nil {
+		log.Println("Failed to create request data: ", err)
+		return err
+	}
+	defer requestsFile.Close()
+
+	writer := csv.NewWriter(requestsFile)
+	defer writer.Flush()
+
+	headers := []string{"tmdbId", "name", "status", "details"}
+
+	writer.Write(headers)
+	for _, req := range requests {
+		row := []string{strconv.Itoa(req.Film.TmdbId), req.Film.TmdbInfo.Title, string(req.Status), req.Details}
+		writer.Write(row)
+	}
+	return nil
+}
+
+func GetLastRequets() ([]byte, error) {
+	file, err := os.Open(requestsFilename)
+
+	if err != nil {
+		log.Println("Error while reading the file", err)
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+
+	headers, err := reader.Read()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Read the CSV data rows
+	var data []map[string]interface{}
+	for {
+		row, err := reader.Read()
+		if err != nil {
+			break
+		}
+
+		m := make(map[string]interface{})
+		for i, val := range row {
+			valint, err := strconv.ParseInt(val, 10, 0)
+			if err == nil {
+				m[headers[i]] = valint
+				continue
+			}
+
+			m[headers[i]] = val
+		}
+		data = append(data, m)
+	}
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	return b, nil
 }
